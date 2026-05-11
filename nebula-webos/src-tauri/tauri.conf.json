@@ -11,19 +11,15 @@
     "windows": [
       {
         "title": "Nebula WebOS",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 640,
-        "resizable": true,
+        "fullscreen": true,
+        "resizable": false,
         "decorations": false,
         "transparent": false,
-        "center": true,
         "visible": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+      "csp": "default-src 'self'; connect-src ipc:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
     }
   },
   "bundle": {
