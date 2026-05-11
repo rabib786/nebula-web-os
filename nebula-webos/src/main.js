@@ -1,6 +1,14 @@
 const desktop = document.getElementById('desktop');
 const template = document.getElementById('window-template');
+const nativeMinimize = document.getElementById('native-minimize');
+const nativeMaximize = document.getElementById('native-maximize');
+const nativeClose = document.getElementById('native-close');
 let highestZIndex = 100;
+let appWindow = null;
+
+if (window.__TAURI__?.window?.appWindow) {
+  appWindow = window.__TAURI__.window.appWindow;
+}
 
 function updateClock() {
   const now = new Date();
@@ -100,6 +108,41 @@ document.querySelectorAll('.app-icon').forEach(icon => {
   icon.addEventListener('click', () => {
     openWindow(icon.dataset.app);
   });
+});
+
+nativeMinimize?.addEventListener('click', () => {
+  if (appWindow) {
+    appWindow.minimize();
+  }
+});
+
+nativeMaximize?.addEventListener('click', async () => {
+  if (appWindow) {
+    const maximized = await appWindow.isMaximized();
+    if (maximized) {
+      appWindow.unmaximize();
+    } else {
+      appWindow.maximize();
+    }
+  }
+});
+
+nativeClose?.addEventListener('click', () => {
+  if (appWindow) {
+    appWindow.close();
+  }
+});
+
+window.addEventListener('keydown', async (event) => {
+  if (!appWindow) return;
+  if (event.key === 'F11') {
+    const maximized = await appWindow.isMaximized();
+    if (maximized) {
+      appWindow.unmaximize();
+    } else {
+      appWindow.maximize();
+    }
+  }
 });
 
 // Optionally open a default window on launch
