@@ -6,6 +6,19 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[tauri::command]
+async fn fetch_html(url: String) -> Result<String, String> {
+    match reqwest::get(&url).await {
+        Ok(response) => {
+            match response.text().await {
+                Ok(text) => Ok(text),
+                Err(e) => Err(format!("Failed to read response: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Failed to fetch URL: {}", e)),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let minimize = CustomMenuItem::new("minimize".to_string(), "Minimize");
@@ -23,7 +36,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, fetch_html])
         .menu(window_menu)
         .on_menu_event(|event| {
             let window = event.window();

@@ -43,6 +43,59 @@ export function BrowserApp() {
 
   const currentUrl = history[historyIndex];
 
+  const [htmlContent, setHtmlContent] = useState<string | null>(null);
+  const [isLoadingHtml, setIsLoadingHtml] = useState(false);
+
+  useEffect(() => {
+    if (currentUrl === 'nebula://start') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHtmlContent(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingHtml(true);
+
+    const fetchContent = async () => {
+      try {
+        const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+        
+        if (isTauri) {
+          // @ts-ignore
+          const invoke = window.__TAURI_INTERNALS__?.invoke || window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+          if (invoke) {
+            const html = await invoke('fetch_html', { url: currentUrl });
+            if (isMounted) {
+               const baseUrl = new URL(currentUrl).origin;
+               const baseTag = `<base href="${baseUrl}/">`;
+               let finalHtml = html as string;
+               if (finalHtml.includes('<head>')) {
+                 finalHtml = finalHtml.replace('<head>', `<head>${baseTag}`);
+               } else {
+                 finalHtml = `<head>${baseTag}</head>${finalHtml}`;
+               }
+               setHtmlContent(finalHtml);
+            }
+          } else {
+             if (isMounted) setHtmlContent(null);
+          }
+        } else {
+          if (isMounted) setHtmlContent(null);
+        }
+      } catch (e) {
+        if (isMounted) {
+          setHtmlContent(`<html><body><div style="font-family:sans-serif;padding:2rem;"><h1>Failed to load</h1><p style="color:red;">${String(e)}</p></div></body></html>`);
+        }
+      } finally {
+        if (isMounted) setIsLoadingHtml(false);
+      }
+    };
+
+    fetchContent();
+
+    return () => { isMounted = false; };
+  }, [currentUrl]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrlInput(currentUrl);
@@ -245,14 +298,22 @@ export function BrowserApp() {
             </div>
           </div>
         ) : (
-          <iframe 
-            id="browser-iframe"
-            src={`/api/proxy?url=${encodeURIComponent(currentUrl)}`} 
-            className="w-full h-full flex-1 border-none bg-white"
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-            title="Nebula Edge Browser Frame"
-            referrerPolicy="no-referrer"
-          />
+          <div className="w-full h-full flex-1 relative bg-white">
+            {isLoadingHtml && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                <RefreshCw className="animate-spin text-blue-500" size={24} />
+              </div>
+            )}
+            <iframe 
+              id="browser-iframe"
+              src={htmlContent ? undefined : `/api/proxy?url=${encodeURIComponent(currentUrl)}`} 
+              srcDoc={htmlContent || undefined}
+              className="w-full h-full border-none bg-white"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+              title="Nebula Edge Browser Frame"
+              referrerPolicy="no-referrer"
+            />
+          </div>
         )}
       </div>
     </div>
