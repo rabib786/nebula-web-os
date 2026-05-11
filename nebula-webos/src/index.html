@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nebula WebOS</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="desktop">
+    <!-- Windows will be injected here -->
+  </div>
+  
+  <div id="taskbar">
+    <div class="taskbar-apps">
+      <div class="app-icon" data-app="browser">🌐</div>
+      <div class="app-icon" data-app="files">📁</div>
+      <div class="app-icon" data-app="terminal">💻</div>
+    </div>
+    <div id="clock">12:00 PM</div>
+  </div>
+
+  <template id="window-template">
+    <div class="window">
+      <div class="titlebar">
+        <span class="title">Window</span>
+        <div class="controls">
+          <button class="minimize">-</button>
+          <button class="maximize">□</button>
+          <button class="close">x</button>
+        </div>
+      </div>
+      <div class="content">
+        <!-- App content here -->
+      </div>
+    </div>
+  </template>
+
+  <script src="main.js" type="module"></script>
+</body>
+</html>

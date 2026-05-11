@@ -1,0 +1,6 @@
+{
+  "name": "Nebula Web OS",
+  "description": "A high-fidelity web-based desktop environment featuring window management, a taskbar, and glassmorphic UI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
