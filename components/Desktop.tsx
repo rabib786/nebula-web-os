@@ -6,7 +6,7 @@ import { Window } from '@/components/Window';
 import { AppWindow } from '@/store/useStore';
 import { Terminal, Folder, Globe, Calculator, Settings, CodeSquare, CloudSun } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SYSTEM_APPS } from '@/config/apps';
+import { SYSTEM_APPS_MAP } from '@/config/apps';
 import { AppDrawer } from '@/components/AppDrawer';
 
 import { BrowserApp } from '@/components/BrowserApp';
@@ -139,7 +139,7 @@ export function Desktop() {
       {/* Desktop Grid for icons */}
       <div className="absolute top-6 left-6 flex flex-col gap-8 flex-wrap content-start max-h-full pb-32">
         {desktopShortcuts.map(shortcutId => {
-          const app = SYSTEM_APPS.find(a => a.id === shortcutId);
+          const app = SYSTEM_APPS_MAP.get(shortcutId);
           if (!app) return null;
           return (
           <button
@@ -182,7 +182,7 @@ export function Desktop() {
             <>
               <button 
                 onClick={() => {
-                  const targetApp = SYSTEM_APPS.find(a => a.id === contextMenu.targetId);
+                  const targetApp = contextMenu.targetId ? SYSTEM_APPS_MAP.get(contextMenu.targetId) : undefined;
                   if (targetApp) handleLaunchApp(targetApp);
                   closeContextMenu();
                 }}
