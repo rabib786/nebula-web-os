@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Globe, Wifi, WifiOff, RefreshCw, ArrowLeft, ArrowRight, Home } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { invoke } from '@tauri-apps/api/core';
 
 export function BrowserApp() {
   const [isOnline, setIsOnline] = useState(true);
@@ -43,59 +43,6 @@ export function BrowserApp() {
 
   const currentUrl = history[historyIndex];
 
-  const [htmlContent, setHtmlContent] = useState<string | null>(null);
-  const [isLoadingHtml, setIsLoadingHtml] = useState(false);
-
-  useEffect(() => {
-    if (currentUrl === 'nebula://start') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setHtmlContent(null);
-      return;
-    }
-
-    let isMounted = true;
-    setIsLoadingHtml(true);
-
-    const fetchContent = async () => {
-      try {
-        const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
-        
-        if (isTauri) {
-          // @ts-ignore
-          const invoke = window.__TAURI_INTERNALS__?.invoke || window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
-          if (invoke) {
-            const html = await invoke('fetch_html', { url: currentUrl });
-            if (isMounted) {
-               const baseUrl = new URL(currentUrl).origin;
-               const baseTag = `<base href="${baseUrl}/">`;
-               let finalHtml = html as string;
-               if (finalHtml.includes('<head>')) {
-                 finalHtml = finalHtml.replace('<head>', `<head>${baseTag}`);
-               } else {
-                 finalHtml = `<head>${baseTag}</head>${finalHtml}`;
-               }
-               setHtmlContent(finalHtml);
-            }
-          } else {
-             if (isMounted) setHtmlContent(null);
-          }
-        } else {
-          if (isMounted) setHtmlContent(null);
-        }
-      } catch (e) {
-        if (isMounted) {
-          setHtmlContent(`<html><body><div style="font-family:sans-serif;padding:2rem;"><h1>Failed to load</h1><p style="color:red;">${String(e)}</p></div></body></html>`);
-        }
-      } finally {
-        if (isMounted) setIsLoadingHtml(false);
-      }
-    };
-
-    fetchContent();
-
-    return () => { isMounted = false; };
-  }, [currentUrl]);
-
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrlInput(currentUrl);
@@ -113,7 +60,6 @@ export function BrowserApp() {
           finalUrl = `https://${finalUrl}`;
         }
       } else {
-        // Use bing for search as it tends to be slightly more iframe-friendly than Google in some regions
         finalUrl = `https://www.bing.com/search?q=${encodeURIComponent(finalUrl)}`;
       }
     }
@@ -129,7 +75,6 @@ export function BrowserApp() {
       if (e.data?.type === 'NEBULA_BROWSER_NAV' && e.data?.url) {
         navigateTo(e.data.url);
       } else if (e.data?.type === 'NEBULA_BROWSER_LOADED' && e.data?.url) {
-        // If the URL changed due to a redirect
         if (e.data.url !== currentUrl) {
            const newHistory = history.map((url, i) => i === historyIndex ? e.data.url : url);
            setHistory(newHistory);
@@ -142,18 +87,24 @@ export function BrowserApp() {
 
   const handleBack = () => {
     if (historyIndex > 0) setHistoryIndex(historyIndex - 1);
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+    if (isTauri && historyIndex > 0) {
+      invoke('browser_go_back');
+    }
   };
 
   const handleForward = () => {
     if (historyIndex < history.length - 1) setHistoryIndex(historyIndex + 1);
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+    if (isTauri && historyIndex < history.length - 1) {
+      invoke('browser_go_forward');
+    }
   };
 
   const handleReload = () => {
-    const iframe = document.getElementById('browser-iframe') as HTMLIFrameElement;
-    if (iframe) {
-      const currentSrc = iframe.src;
-      iframe.src = 'about:blank';
-      setTimeout(() => { iframe.src = currentSrc; }, 10);
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+    if (isTauri && currentUrl !== 'nebula://start') {
+      invoke('browser_reload');
     }
   };
 
@@ -168,6 +119,64 @@ export function BrowserApp() {
     e.preventDefault();
     navigateTo(startSearch);
   };
+
+  // Tauri webview instantiation
+  useEffect(() => {
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+    if (!isTauri) return;
+
+    let webview: any = null;
+    let isUnmounted = false;
+
+    const initWebview = async () => {
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      const initialUrl = currentUrl === 'nebula://start' ? 'about:blank' : currentUrl;
+
+      webview = new WebviewWindow('browser-view', {
+        url: initialUrl,
+        x: 0,
+        y: 48,
+        width: window.innerWidth,
+        height: window.innerHeight - 48
+      });
+
+      webview.once('tauri://created', async () => {
+         // Inject script to override window.open and restrict target="_blank" to same webview
+         await invoke('browser_navigate', { url: "javascript:window.open = function(u){ window.location.href = u; return null; };" });
+      });
+
+      const handleResize = async () => {
+        if (webview && !isUnmounted) {
+           const { LogicalSize } = await import('@tauri-apps/api/dpi');
+           webview.setSize(new LogicalSize(window.innerWidth, window.innerHeight - 48));
+        }
+      };
+      window.addEventListener('resize', handleResize);
+    };
+
+    initWebview();
+
+    return () => {
+       isUnmounted = true;
+       if (webview) {
+           webview.close().catch(() => {});
+       }
+       window.removeEventListener('resize', () => {});
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+    if (!isTauri) return;
+
+    if (currentUrl === 'nebula://start') {
+       invoke('browser_navigate', { url: 'about:blank' }).catch(() => {});
+    } else {
+       invoke('browser_navigate', { url: currentUrl }).catch(() => {});
+       invoke('browser_navigate', { url: "javascript:window.open = function(u){ window.location.href = u; return null; };" }).catch(() => {});
+    }
+  }, [currentUrl]);
 
   if (!isOnline) {
     return (
@@ -198,7 +207,7 @@ export function BrowserApp() {
   return (
     <div className="w-full h-full flex flex-col bg-white dark:bg-zinc-50 flex-1">
       {/* Top Address Bar area */}
-      <div className="h-12 border-b flex items-center px-2 bg-gray-100 dark:bg-zinc-200 text-gray-800 gap-1 shrink-0">
+      <div className="h-12 border-b flex items-center px-2 bg-gray-100 dark:bg-zinc-200 text-gray-800 gap-1 shrink-0 z-50 relative">
         <div className="flex gap-1 shrink-0">
           <button 
             onClick={handleBack}
@@ -253,7 +262,7 @@ export function BrowserApp() {
       {/* Browser Content */}
       <div className="flex-1 relative bg-white flex flex-col min-h-0">
         {currentUrl === 'nebula://start' ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-black bg-zinc-50 overflow-y-auto w-full">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-black bg-zinc-50 overflow-y-auto w-full z-10 relative">
             <div className="flex flex-col items-center max-w-lg w-full mb-16">
               <h1 className="text-4xl font-bold mb-8 text-zinc-800 tracking-tight flex items-center gap-3">
                 <Globe className="text-blue-500" size={40} /> Nebula Edge
@@ -290,30 +299,10 @@ export function BrowserApp() {
                   </button>
                 ))}
               </div>
-
-              <div className="mt-12 text-xs text-zinc-400 text-center px-4 bg-zinc-100/50 p-4 rounded-xl border border-zinc-200/50">
-                <p className="font-semibold mb-1 text-zinc-500">Notice about Web Browsers in OS Simulators:</p>
-                To bypass X-Frame-Options and CORS restrictions, this browser leverages a <b>backend proxy</b>. While this allows Wikipedia, Bing, and static sites to load, complex Single Page Applications (like YouTube or Google) may still fail due to strict Content Security Policies, JavaScript CORS errors, or cookie restrictions that cannot be completely masked by a simple proxy.
-              </div>
             </div>
           </div>
         ) : (
-          <div className="w-full h-full flex-1 relative bg-white">
-            {isLoadingHtml && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                <RefreshCw className="animate-spin text-blue-500" size={24} />
-              </div>
-            )}
-            <iframe 
-              id="browser-iframe"
-              src={htmlContent ? undefined : `/api/proxy?url=${encodeURIComponent(currentUrl)}`} 
-              srcDoc={htmlContent || undefined}
-              className="w-full h-full border-none bg-white"
-              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-              title="Nebula Edge Browser Frame"
-              referrerPolicy="no-referrer"
-            />
-          </div>
+          <div id="webview-container" className="w-full h-full flex-1 relative bg-white" />
         )}
       </div>
     </div>
