@@ -11,6 +11,10 @@ import { BrowserApp } from '@/components/BrowserApp';
 import { FilesApp } from '@/components/FilesApp';
 import { WeatherApp } from '@/components/WeatherApp';
 
+import { NotesApp } from '@/components/NotesApp';
+import { TodoApp } from '@/components/TodoApp';
+
+
 // Simple counter to ensure unique IDs across launches
 let appLaunchCounter = 0;
 
@@ -54,6 +58,15 @@ export function Desktop() {
       component = <WeatherApp />;
       width = 800;
       height = 600;
+
+    } else if (appInfo.id === 'notes') {
+      component = <NotesApp />;
+      width = 800;
+      height = 600;
+    } else if (appInfo.id === 'todos') {
+      component = <TodoApp />;
+      width = 600;
+      height = 700;
     } else if (appInfo.id === 'terminal') {
       component = (
         <div className="w-full h-full bg-slate-900 border-none p-2 font-mono text-xs sm:text-sm text-green-400 flex flex-col">
