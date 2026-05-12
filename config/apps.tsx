@@ -10,3 +10,5 @@ export const SYSTEM_APPS = [
   { id: 'settings', title: 'Settings', icon: <Settings size={16} /> },
   { id: 'editor', title: 'Code Editor', icon: <CodeSquare size={16} /> },
 ];
+
+export const SYSTEM_APPS_MAP = new Map(SYSTEM_APPS.map(app => [app.id, app]));
