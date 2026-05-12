@@ -3,8 +3,6 @@
 import React, { useRef, useState } from 'react';
 import { useStore } from '@/store/useStore';
 import { Window } from '@/components/Window';
-import { AppWindow } from '@/store/useStore';
-import { Terminal, Folder, Globe, Calculator, Settings, CodeSquare, CloudSun } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SYSTEM_APPS } from '@/config/apps';
 import { AppDrawer } from '@/components/AppDrawer';
