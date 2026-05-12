@@ -1,15 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Trash2, Pin, Folder, Edit3, Search, Save, Check } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, Edit3, Save, Search, Pin, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface Note {
-  id: string;
-  title: string;
-  content: string;
-  pinned: boolean;
-  category: string;
-  updatedAt: number;
-}
+import { getNotes, createNote as createNoteDb, updateNote as updateNoteDb, deleteNote as deleteNoteDb, Note } from '@/lib/db';
 
 export function NotesApp() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -18,27 +10,17 @@ export function NotesApp() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load initial (mock) data
+  // Load initial data from SQLite
   useEffect(() => {
-    const savedNotes = localStorage.getItem('nebula-notes');
-    if (savedNotes) {
+    const loadNotes = async () => {
       try {
-        setNotes(JSON.parse(savedNotes));
-      } catch (e) {
-        console.error("Failed to parse notes", e);
+        const savedNotes = await getNotes();
+        setNotes(savedNotes);
+      } catch (error) {
+        console.error("Failed to load notes from DB", error);
       }
-    } else {
-      setNotes([
-        {
-          id: '1',
-          title: 'Welcome to Notes',
-          content: 'This is a high-performance, distraction-free note-taking app.\n\n- Try editing this note.\n- Pin notes to keep them at the top.\n- Organize with categories.',
-          pinned: true,
-          category: 'Personal',
-          updatedAt: Date.now(),
-        }
-      ]);
-    }
+    };
+    loadNotes();
   }, []);
 
   // Simulate Auto-save to Tauri backend
@@ -47,13 +29,15 @@ export function NotesApp() {
 
     setIsSaving(true);
     const timeoutId = setTimeout(() => {
-      localStorage.setItem('nebula-notes', JSON.stringify(notes));
-      // TODO: Replace with Tauri API call: invoke('save_notes', { notes })
+      const active = notes.find(n => n.id === activeNoteId);
+      if (active) {
+        updateNoteDb(active).catch(err => console.error("Auto-save failed", err));
+      }
       setIsSaving(false);
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [notes]);
+  }, [notes, activeNoteId]);
 
   const activeNote = useMemo(() => notes.find(n => n.id === activeNoteId), [notes, activeNoteId]);
 
@@ -68,41 +52,62 @@ export function NotesApp() {
     }
     // Sort: Pinned first, then by newest
     return [...result].sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return b.updatedAt - a.updatedAt;
+      if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+      return b.updated_at - a.updated_at;
     });
   }, [notes, searchQuery]);
 
-  const createNote = () => {
+  const createNote = async () => {
     const newNote: Note = {
       id: Date.now().toString(),
       title: 'Untitled Note',
       content: '',
-      pinned: false,
-      category: categories[0] || 'Uncategorized',
-      updatedAt: Date.now(),
+      is_pinned: false,
+      color_tag: categories[0] || 'Uncategorized',
+      updated_at: Date.now(),
     };
-    setNotes(prev => [newNote, ...prev]);
-    setActiveNoteId(newNote.id);
+    try {
+      await createNoteDb(newNote);
+      setNotes(prev => [newNote, ...prev]);
+      setActiveNoteId(newNote.id);
+    } catch (err) {
+      console.error("Failed to create note", err);
+    }
   };
 
-  const updateActiveNote = (updates: Partial<Note>) => {
+  const updateActiveNote = async (updates: Partial<Note>) => {
     if (!activeNoteId) return;
-    setNotes(prev => prev.map(n =>
-      n.id === activeNoteId ? { ...n, ...updates, updatedAt: Date.now() } : n
-    ));
+
+    setNotes(prev => {
+      const updatedNotes = prev.map(n =>
+        n.id === activeNoteId ? { ...n, ...updates, updated_at: Date.now() } : n
+      );
+      return updatedNotes;
+    });
   };
 
-  const deleteNote = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-    if (activeNoteId === id) setActiveNoteId(null);
+  const deleteNote = async (id: string) => {
+    try {
+      await deleteNoteDb(id);
+      setNotes(prev => prev.filter(n => n.id !== id));
+      if (activeNoteId === id) setActiveNoteId(null);
+    } catch (err) {
+      console.error("Failed to delete note", err);
+    }
   };
 
-  const togglePin = (id: string, e: React.MouseEvent) => {
+  const togglePin = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setNotes(prev => prev.map(n =>
-      n.id === id ? { ...n, pinned: !n.pinned, updatedAt: Date.now() } : n
-    ));
+    const noteToUpdate = notes.find(n => n.id === id);
+    if (!noteToUpdate) return;
+
+    const updatedNote = { ...noteToUpdate, is_pinned: !noteToUpdate.is_pinned, updated_at: Date.now() };
+    try {
+      await updateNoteDb(updatedNote);
+      setNotes(prev => prev.map(n => n.id === id ? updatedNote : n));
+    } catch (err) {
+      console.error("Failed to update pin status", err);
+    }
   };
 
   const extractTitle = (content: string) => {
@@ -159,14 +164,14 @@ export function NotesApp() {
                   onClick={(e) => togglePin(note.id, e)}
                   className={cn(
                     "shrink-0 opacity-0 group-hover:opacity-100 transition-opacity",
-                    note.pinned ? "opacity-100 text-blue-400" : "text-slate-400 hover:text-slate-200"
+                    note.is_pinned ? "opacity-100 text-blue-400" : "text-slate-400 hover:text-slate-200"
                   )}
                 >
-                  <Pin size={14} className={note.pinned ? "fill-current" : ""} />
+                  <Pin size={14} className={note.is_pinned ? "fill-current" : ""} />
                 </button>
               </div>
               <div className="text-xs text-slate-500 truncate">
-                {new Date(note.updatedAt).toLocaleDateString()} - {note.content.substring(0, 30) || "No additional text"}
+                {new Date(note.updated_at).toLocaleDateString()} - {note.content.substring(0, 30) || "No additional text"}
               </div>
             </div>
           ))}
@@ -185,7 +190,7 @@ export function NotesApp() {
             <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 shrink-0 bg-black/20">
               <div className="flex items-center gap-4">
                 <span className="text-xs font-medium px-2 py-1 bg-white/5 rounded-md text-slate-300 border border-white/5">
-                  {activeNote.category}
+                  {activeNote.color_tag}
                 </span>
                 <div className="flex items-center gap-1 text-xs text-slate-500">
                   {isSaving ? (

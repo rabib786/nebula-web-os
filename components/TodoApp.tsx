@@ -2,16 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, Clock, CheckCircle2, Circle, GripVertical, Trash2 } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { getTodos, createTodo as createTodoDb, updateTodo as updateTodoDb, deleteTodo as deleteTodoDb, Todo } from '@/lib/db';
 
 type TodoStatus = 'Pending' | 'In Progress' | 'Completed';
-
-interface Todo {
-  id: string;
-  text: string;
-  status: TodoStatus;
-  deadline?: string;
-  createdAt: number;
-}
 
 export function TodoApp() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -19,68 +12,72 @@ export function TodoApp() {
   const [newTaskDeadline, setNewTaskDeadline] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
-  // Load mock data
+  // Load data from SQLite
   useEffect(() => {
-    const saved = localStorage.getItem('nebula-todos');
-    if (saved) {
+    const loadTodos = async () => {
       try {
-        setTodos(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse todos", e);
+        const savedTodos = await getTodos();
+        setTodos(savedTodos || []);
+      } catch (error) {
+        console.error("Failed to load todos from DB", error);
       }
-    } else {
-      setTodos([
-        { id: '1', text: 'Design new WebOS widget', status: 'In Progress', createdAt: Date.now() - 100000 },
-        { id: '2', text: 'Fix Tauri IPC bindings', status: 'Pending', createdAt: Date.now() - 50000 },
-        { id: '3', text: 'Review PRs', status: 'Completed', createdAt: Date.now() - 200000 },
-      ]);
-    }
+    };
+    loadTodos();
   }, []);
 
-  // Save changes
-  useEffect(() => {
-    if (todos.length > 0) {
-      localStorage.setItem('nebula-todos', JSON.stringify(todos));
-    }
-  }, [todos]);
-
-  const addTodo = (e?: React.FormEvent) => {
+  const addTodo = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!newTaskText.trim()) return;
 
     const newTodo: Todo = {
       id: Date.now().toString(),
-      text: newTaskText.trim(),
+      task: newTaskText.trim(),
       status: 'Pending',
-      deadline: newTaskDeadline || undefined,
-      createdAt: Date.now()
+      due_date: newTaskDeadline || undefined,
+      created_at: Date.now()
     };
 
-    setTodos(prev => [newTodo, ...prev]);
-    setNewTaskText('');
-    setNewTaskDeadline('');
-    setIsAdding(false);
+    try {
+      await createTodoDb(newTodo);
+      setTodos(prev => [newTodo, ...prev]);
+      setNewTaskText('');
+      setNewTaskDeadline('');
+      setIsAdding(false);
+    } catch (err) {
+      console.error("Failed to create todo", err);
+    }
   };
 
-  const deleteTodo = (id: string) => {
-    setTodos(prev => prev.filter(t => t.id !== id));
+  const deleteTodo = async (id: string) => {
+    try {
+      await deleteTodoDb(id);
+      setTodos(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      console.error("Failed to delete todo", err);
+    }
   };
 
-  const toggleStatus = (id: string) => {
-    setTodos(prev => prev.map(t => {
-      if (t.id !== id) return t;
+  const toggleStatus = async (id: string) => {
+    const todoToUpdate = todos.find(t => t.id === id);
+    if (!todoToUpdate) return;
 
-      let nextStatus: TodoStatus = 'Pending';
-      if (t.status === 'Pending') nextStatus = 'In Progress';
-      else if (t.status === 'In Progress') nextStatus = 'Completed';
-      else if (t.status === 'Completed') nextStatus = 'Pending';
+    let nextStatus: TodoStatus = 'Pending';
+    if (todoToUpdate.status === 'Pending') nextStatus = 'In Progress';
+    else if (todoToUpdate.status === 'In Progress') nextStatus = 'Completed';
+    else if (todoToUpdate.status === 'Completed') nextStatus = 'Pending';
 
-      return { ...t, status: nextStatus };
-    }));
+    const updatedTodo = { ...todoToUpdate, status: nextStatus };
+
+    try {
+      await updateTodoDb(updatedTodo);
+      setTodos(prev => prev.map(t => (t.id === id ? updatedTodo : t)));
+    } catch (err) {
+      console.error("Failed to update status", err);
+    }
   };
 
   const renderSection = (title: string, status: TodoStatus) => {
-    const sectionTodos = todos.filter(t => t.status === status);
+    const sectionTodos = (todos || []).filter(t => t.status === status);
 
     return (
       <div className="mb-8 bg-black/20 rounded-2xl p-4 border border-white/5">
@@ -132,7 +129,7 @@ export function TodoApp() {
                     "block truncate transition-all duration-300",
                     todo.status === 'Completed' && "text-slate-500"
                   )}>
-                    {todo.text}
+                    {todo.task}
                   </span>
                   {/* Hardware accelerated strikethrough animation */}
                   <div className={cn(
@@ -140,10 +137,10 @@ export function TodoApp() {
                     todo.status === 'Completed' ? "w-full scale-x-100" : "w-0 scale-x-0"
                   )} />
 
-                  {todo.deadline && (
+                  {todo.due_date && (
                     <span className="flex items-center gap-1 text-xs text-slate-500 mt-1">
                       <Calendar size={10} />
-                      {new Date(todo.deadline).toLocaleDateString()}
+                      {new Date(todo.due_date).toLocaleDateString()}
                     </span>
                   )}
                 </div>
