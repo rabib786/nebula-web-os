@@ -19,6 +19,9 @@ export async function GET(request: Request) {
     return new NextResponse('Invalid URL provided', { status: 400 });
   }
 
+  const requestUrl = new URL(request.url);
+  const allowedOrigin = requestUrl.origin;
+
   try {
     const res = await fetch(parsedUrl.toString(), {
       headers: {
@@ -89,7 +92,8 @@ export async function GET(request: Request) {
       return new NextResponse(html, {
         headers: {
           'Content-Type': contentType,
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': allowedOrigin,
+          'X-Content-Type-Options': 'nosniff',
         },
       });
     }
@@ -99,7 +103,8 @@ export async function GET(request: Request) {
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'X-Content-Type-Options': 'nosniff',
       },
     });
 
